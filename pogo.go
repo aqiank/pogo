@@ -3,6 +3,8 @@ package pogo
 import (
 	"github.com/jackyb/go-sdl2/sdl"
 	"github.com/jackyb/go-sdl2/sdl_image"
+	"os"
+	"log"
 )
 
 const (
@@ -17,20 +19,23 @@ const (
 )
 
 type PImage struct {
+	surface *sdl.Surface
 	texture *sdl.Texture
 	Width, Height int
 }
 
+type Color sdl.Color
+
 // internal variables
-var window *sdl.Window
-var renderer *sdl.Renderer
-var strokeColor, fillColor uint32 = 0x000000, 0xffffffff
+var window *sdl.Window = nil
+var renderer *sdl.Renderer = nil
+var strokeColor, fillColor Color = Color{0, 0, 0, 0xff}, Color{0xff, 0xff, 0xff, 0xff}
 var strokeEnabled, fillEnabled = true, true
 var frameRate = 60
 var period = 1000 / frameRate
 
 // public variables that users can use
-var Width, Height int
+var Width, Height int = 200, 200
 var MouseX, MouseY int = 0, 0
 var Key byte
 
@@ -38,11 +43,31 @@ var Key byte
 var QuitHandler func() = nil
 var KeyDownHandler, KeyUpHandler func() = nil, nil
 
+func init() {
+	window, renderer = sdl.CreateWindowAndRenderer(Width, Height, 0)
+	if window == nil || renderer == nil {
+		log.Fatal(sdl.GetError())
+		os.Exit(1)
+	}
+	Background(200, 200, 200)
+}
+
 // setup the window and renderer
-func Setup(w, h int, flags uint32) {
+func Size(w, h int, flags uint32) {
 	Width, Height = w, h
+
+	if renderer == nil {
+		os.Exit(1)
+	}
+	if window == nil {
+		os.Exit(1)
+	}
+
+	renderer.Destroy()
+	window.Destroy()
+
 	window, renderer = sdl.CreateWindowAndRenderer(Width, Height, flags)
-	Background(0xf0f0f0)
+	Background(200, 200, 200)
 }
 
 // assign a function that will be executed indefinitely when the program is running
@@ -94,33 +119,34 @@ func SetFramerate(fps int) {
 }
 
 // fill solid color onto the whole screen
-func Background(color uint32) {
-	renderer.SetDrawColor(uint8(color >> 16), uint8(color >> 8), uint8(color), uint8(color >> 24))
+func Background(r, g, b uint8) {
+	renderer.SetDrawColor(r, g, b, 0xff)
 	renderer.Clear()
 }
 
+func NoStroke() {
+	strokeEnabled = false
+}
+
 // specify the stroke color
-func Stroke(color uint32) {
-	if color == 0 {
-		color = 0xff000000
-	}
-	strokeColor = color
+func Stroke(r, g, b, a uint8) {
+	strokeColor = Color{r, g, b, a}
 	strokeEnabled = true
-	renderer.SetDrawColor(uint8(strokeColor >> 16), uint8(strokeColor >> 8), uint8(strokeColor), uint8(strokeColor >> 24))
+}
+
+func NoFill() {
+	fillEnabled = false
 }
 
 // specify the fill color
-func Fill(color uint32) {
-	if color == 0 {
-		color = 0xff000000
-	}
-	fillColor = color
+func Fill(r, g, b, a uint8) {
+	fillColor = Color {r, g, b, a}
 	fillEnabled = true
-	renderer.SetDrawColor(uint8(fillColor >> 16), uint8(fillColor >> 8), uint8(fillColor), uint8(fillColor >> 24))
 }
 
 // draw a point with specified position
 func Point(x, y int) {
+	renderer.SetDrawColor(strokeColor.R, strokeColor.G, strokeColor.B, strokeColor.A)
 	if strokeEnabled {
 		renderer.DrawPoint(x, y)
 	}
@@ -128,6 +154,7 @@ func Point(x, y int) {
 
 // draw a rectangle with specified positions
 func Line(x1, y1, x2, y2 int) {
+	renderer.SetDrawColor(strokeColor.R, strokeColor.G, strokeColor.B, strokeColor.A)
 	if strokeEnabled {
 		renderer.DrawLine(x1, y1, x2, y2)
 	}
@@ -137,36 +164,60 @@ func Line(x1, y1, x2, y2 int) {
 func Rect(x, y, w, h int) {
 	rect := sdl.Rect {int32(x), int32(y), int32(w), int32(h)}
 	if fillEnabled {
+		renderer.SetDrawColor(fillColor.R, fillColor.G, fillColor.B, fillColor.A)
 		renderer.FillRect(&rect)
 	}
 	if strokeEnabled {
+		renderer.SetDrawColor(strokeColor.R, strokeColor.G, strokeColor.B, strokeColor.A)
 		renderer.DrawRect(&rect)
 	}
 }
 
 // load an image with specified filename (.jpg, .png, .gif, .bmp, .tiff, .webp, etc)
 func LoadImage(filename string) PImage {
-	surface := img.Load(filename)
-	defer surface.Free()
+	var image PImage
+	var surface *sdl.Surface
+	var texture *sdl.Texture
 
-	texture := renderer.CreateTextureFromSurface(surface)
-	img := PImage {texture, int(surface.W), int(surface.H)}
-	return img
+	surface = img.Load(filename)
+	if surface == nil {
+		log.Println(sdl.GetError())
+		goto out
+	}
+	surface = surface.ConvertFormat(sdl.PIXELFORMAT_ARGB8888, 0)
+	texture = renderer.CreateTextureFromSurface(surface)
+	if texture == nil {
+		log.Println(sdl.GetError())
+		goto out
+	}
+	image = PImage {surface, texture, int(surface.W), int(surface.H)}
+out:
+	return image
 }
 
 // draw image normally on the screen
-func Image(img PImage, x, y int) {
-	rect := sdl.Rect {int32(x), int32(y), int32(img.Width), int32(img.Height)}
-	renderer.Copy(img.texture, nil, &rect)
+func Image(image PImage, x, y int) {
+	rect := sdl.Rect {int32(x), int32(y), int32(image.Width), int32(image.Height)}
+	renderer.Copy(image.texture, nil, &rect)
 }
 
 // draw image with specified size
-func ImageScaled(img PImage, x, y, w, h int) {
+func ImageScaled(image PImage, x, y, w, h int) {
 	rect := sdl.Rect {int32(x), int32(y), int32(w), int32(h)}
-	renderer.Copy(img.texture, nil, &rect)
+	renderer.Copy(image.texture, nil, &rect)
 }
 
 // fill screen with the image scaled to the screen size
-func ImageFill(img PImage) {
-	renderer.Copy(img.texture, nil, nil)
+func ImageFill(image PImage) {
+	renderer.Copy(image.texture, nil, nil)
+}
+
+// get the image pixels in ARGB format
+func (image *PImage) Pixels() []uint32 {
+	return sdl.U8To32Array(image.surface.Pixels())
+}
+
+// update the image pixels for rendering
+func (image *PImage) Update() {
+	image.texture.Update(nil, image.surface.Data(), int(image.surface.W * int32(image.surface.Format.BytesPerPixel)))
 }
