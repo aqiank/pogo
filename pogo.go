@@ -3,6 +3,7 @@ package pogo
 import (
 	"github.com/jackyb/go-sdl2/sdl"
 	"github.com/jackyb/go-sdl2/sdl_image"
+	"github.com/jackyb/go-sdl2/sdl_mixer"
 	"os"
 	"log"
 )
@@ -25,6 +26,8 @@ type PImage struct {
 }
 
 type Color sdl.Color
+
+type PSound mix.Chunk
 
 // internal variables
 var window *sdl.Window = nil
@@ -50,6 +53,20 @@ func init() {
 		os.Exit(1)
 	}
 	Background(200, 200, 200)
+
+	endian := sdl.Endian()
+	switch endian {
+	case sdl.BIG_ENDIAN:
+		if mix.OpenAudio(mix.DEFAULT_FREQUENCY, sdl.AUDIO_S16MSB,
+				mix.DEFAULT_CHANNELS, mix.DEFAULT_CHUNKSIZE) {
+			log.Println(sdl.GetError())
+		}
+	case sdl.LIL_ENDIAN:
+		if mix.OpenAudio(mix.DEFAULT_FREQUENCY, mix.DEFAULT_FORMAT,
+				mix.DEFAULT_CHANNELS, mix.DEFAULT_CHUNKSIZE) {
+			log.Println(sdl.GetError())
+		}
+	}
 }
 
 // setup the window and renderer
@@ -220,4 +237,30 @@ func (image *PImage) Pixels() []uint32 {
 // update the image pixels for rendering
 func (image *PImage) Update() {
 	image.texture.Update(nil, image.surface.Data(), int(image.surface.W * int32(image.surface.Format.BytesPerPixel)))
+}
+
+func LoadSound(filename string) *PSound {
+	return (*PSound) (mix.LoadWAV(filename))
+}
+
+func (sound *PSound) Play(loops int) bool {
+	chunk := (*mix.Chunk) (sound)
+	return chunk.PlayChannel(-1, loops)
+}
+
+func (sound *PSound) Playing() bool {
+	return mix.Playing(-1)
+}
+
+func (sound *PSound) Free() {
+	chunk := (*mix.Chunk) (sound)
+	chunk.Free()
+}
+
+func Error() string {
+	return sdl.GetError()
+}
+
+func PrintError() {
+	log.Println(Error())
 }
